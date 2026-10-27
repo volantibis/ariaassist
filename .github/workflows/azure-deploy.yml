@@ -11,6 +11,9 @@ on:
         description: Resource name prefix (lowercase, no special chars)
         required: false
         default: aria
+permissions:
+  id-token: write
+  contents: read
 
 jobs:
   deploy:
@@ -45,3 +48,4 @@ jobs:
           azure_static_web_apps_api_token: ${{ secrets.AZURE_SWA_API_TOKEN }}
           app_location: "frontend"
           output_location: "dist"
+          action: "upload"
