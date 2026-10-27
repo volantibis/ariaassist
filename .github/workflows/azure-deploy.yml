@@ -11,6 +11,7 @@ on:
         description: Resource name prefix (lowercase, no special chars)
         required: false
         default: aria
+
 permissions:
   id-token: write
   contents: read
@@ -37,10 +38,16 @@ jobs:
           LOCATION: ${{ env.AZURE_LOCATION }}
           PREFIX: ${{ env.PREFIX }}
 
-      - name: Build and push backend image to ACR
+      - name: Log in to Azure Container Registry
         run: |
-          ACR="${PREFIX}acr"
-          az acr build -r "$ACR" -t aria-backend:latest backend
+          az acr login --name "${PREFIX}acr"
+
+      - name: Build and push backend image (Local Runner Build)
+        run: |
+          ACR_SERVER="${PREFIX}acr.azurecr.io"
+          IMAGE_NAME="aria-backend:latest"
+          docker build -t "$ACR_SERVER/$IMAGE_NAME" backend
+          docker push "$ACR_SERVER/$IMAGE_NAME"
 
       - name: Build frontend and deploy to Static Web Apps
         uses: Azure/static-web-apps-deploy@v1

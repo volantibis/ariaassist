@@ -28,7 +28,7 @@ az group create -n "$RG" -l "$LOCATION" -o none
 
 echo "== 2. Container registry, and build the image in Azure (no local Docker needed)"
 az acr create -g "$RG" -n "$ACR" --sku Basic -o none
-az acr build -r "$ACR" -t aria-backend:latest "$ROOT/backend"
+# az acr build -r "$ACR" -t aria-backend:latest "$ROOT/backend"
 
 echo "== 3. Model resource and deployments (Azure OpenAI endpoint, usable from AI Foundry)"
 az cognitiveservices account create -g "$RG" -n "$AI" --kind OpenAI --sku S0 -l "$LOCATION" \
