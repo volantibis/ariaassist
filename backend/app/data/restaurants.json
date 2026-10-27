@@ -1,0 +1,22 @@
+[
+  {"id": "r01", "name": "Saffron Table", "cuisine": "north indian", "area": "indiranagar", "price": 2, "rating": 4.5, "capacity": 10, "opens": "11:30", "closes": "23:00", "tags": ["family", "vegetarian friendly"]},
+  {"id": "r02", "name": "Dosa Republic", "cuisine": "south indian", "area": "jayanagar", "price": 1, "rating": 4.3, "capacity": 8, "opens": "07:00", "closes": "22:00", "tags": ["breakfast", "vegetarian"]},
+  {"id": "r03", "name": "Bella Notte", "cuisine": "italian", "area": "koramangala", "price": 3, "rating": 4.6, "capacity": 6, "opens": "12:00", "closes": "23:30", "tags": ["date night", "wine"]},
+  {"id": "r04", "name": "Slice of Napoli", "cuisine": "italian", "area": "indiranagar", "price": 2, "rating": 4.2, "capacity": 12, "opens": "12:00", "closes": "23:00", "tags": ["pizza", "groups"]},
+  {"id": "r05", "name": "Dragon Wok", "cuisine": "chinese", "area": "koramangala", "price": 2, "rating": 4.1, "capacity": 14, "opens": "12:00", "closes": "23:00", "tags": ["groups"]},
+  {"id": "r06", "name": "Jade Garden", "cuisine": "chinese", "area": "whitefield", "price": 3, "rating": 4.4, "capacity": 10, "opens": "12:30", "closes": "22:30", "tags": ["dim sum"]},
+  {"id": "r07", "name": "Tokyo Counter", "cuisine": "japanese", "area": "indiranagar", "price": 3, "rating": 4.7, "capacity": 4, "opens": "18:00", "closes": "23:00", "tags": ["sushi", "omakase"]},
+  {"id": "r08", "name": "Ramen Lab", "cuisine": "japanese", "area": "koramangala", "price": 2, "rating": 4.3, "capacity": 6, "opens": "12:00", "closes": "22:30", "tags": ["ramen"]},
+  {"id": "r09", "name": "Taco Junction", "cuisine": "mexican", "area": "hsr layout", "price": 2, "rating": 4.0, "capacity": 10, "opens": "12:00", "closes": "23:00", "tags": ["groups", "margaritas"]},
+  {"id": "r10", "name": "Casa Fiesta", "cuisine": "mexican", "area": "indiranagar", "price": 2, "rating": 4.2, "capacity": 8, "opens": "13:00", "closes": "23:30", "tags": ["rooftop"]},
+  {"id": "r11", "name": "Kebab Karavan", "cuisine": "mughlai", "area": "frazer town", "price": 2, "rating": 4.6, "capacity": 12, "opens": "12:00", "closes": "23:30", "tags": ["kebabs", "groups"]},
+  {"id": "r12", "name": "Biryani Bagh", "cuisine": "hyderabadi", "area": "jayanagar", "price": 1, "rating": 4.4, "capacity": 15, "opens": "11:00", "closes": "23:00", "tags": ["biryani", "groups"]},
+  {"id": "r13", "name": "Thai Orchid", "cuisine": "thai", "area": "whitefield", "price": 2, "rating": 4.2, "capacity": 8, "opens": "12:00", "closes": "22:30", "tags": ["curry"]},
+  {"id": "r14", "name": "Bangkok Street", "cuisine": "thai", "area": "koramangala", "price": 1, "rating": 4.0, "capacity": 6, "opens": "12:00", "closes": "22:00", "tags": ["street food"]},
+  {"id": "r15", "name": "The Green Fork", "cuisine": "vegetarian", "area": "hsr layout", "price": 2, "rating": 4.3, "capacity": 8, "opens": "08:00", "closes": "22:30", "tags": ["vegan options", "healthy"]},
+  {"id": "r16", "name": "Smoke & Ember", "cuisine": "barbecue", "area": "whitefield", "price": 3, "rating": 4.5, "capacity": 12, "opens": "17:00", "closes": "23:30", "tags": ["grill", "groups"]},
+  {"id": "r17", "name": "Café Meridian", "cuisine": "cafe", "area": "indiranagar", "price": 2, "rating": 4.4, "capacity": 6, "opens": "08:00", "closes": "21:00", "tags": ["brunch", "coffee"]},
+  {"id": "r18", "name": "Olive & Thyme", "cuisine": "mediterranean", "area": "koramangala", "price": 3, "rating": 4.5, "capacity": 8, "opens": "12:00", "closes": "23:00", "tags": ["mezze", "date night"]},
+  {"id": "r19", "name": "Malabar Kitchen", "cuisine": "kerala", "area": "frazer town", "price": 2, "rating": 4.6, "capacity": 10, "opens": "12:00", "closes": "22:30", "tags": ["seafood", "family"]},
+  {"id": "r20", "name": "Burger Barn", "cuisine": "american", "area": "hsr layout", "price": 1, "rating": 3.9, "capacity": 10, "opens": "12:00", "closes": "00:00", "tags": ["casual", "groups"]}
+]

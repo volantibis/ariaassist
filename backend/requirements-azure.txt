@@ -1,0 +1,4 @@
+-r requirements.txt
+# Needed only when SECRETS_PROVIDER=keyvault
+azure-identity
+azure-keyvault-secrets

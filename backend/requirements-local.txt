@@ -1,0 +1,3 @@
+-r requirements.txt
+# Embedded vector store for local development (not needed in the Azure image)
+chromadb

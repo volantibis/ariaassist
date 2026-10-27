@@ -1,0 +1,43 @@
+{"suite": "router", "text": "what does the leave policy say about carry-over?", "expect": "ask_docs"}
+{"suite": "router", "text": "according to the handbook, how many sick days do we get?", "expect": "ask_docs"}
+{"suite": "router", "text": "what's the notice period in the document I uploaded?", "expect": "ask_docs"}
+{"suite": "router", "text": "what is written in the screenshot I attached?", "expect": "ask_docs"}
+{"suite": "router", "text": "summarise page 3 of the PDF for me", "expect": "ask_docs"}
+{"suite": "router", "text": "can you recap what we discussed?", "expect": "summarize"}
+{"suite": "router", "text": "tldr?", "expect": "summarize"}
+{"suite": "router", "text": "can someone summarise the last 20 messages", "expect": "summarize"}
+{"suite": "router", "text": "give me a quick summary of this chat", "expect": "summarize"}
+{"suite": "router", "text": "any good sushi places nearby?", "expect": "find_restaurant"}
+{"suite": "router", "text": "where should we eat tonight?", "expect": "find_restaurant"}
+{"suite": "router", "text": "I'm craving ramen, suggestions?", "expect": "find_restaurant"}
+{"suite": "router", "text": "find us a cheap italian place in koramangala", "expect": "find_restaurant"}
+{"suite": "router", "text": "recommend a restaurant for a group of 8", "expect": "find_restaurant"}
+{"suite": "router", "text": "book Saffron Table for 4 at 8pm", "expect": "book_table"}
+{"suite": "router", "text": "reserve a table for 6 at Bella Notte at 9pm", "expect": "book_table"}
+{"suite": "router", "text": "yes please book it", "expect": "book_table", "history": ["alice: Bella Notte sounds great", "Aria: Bella Notte (italian) is open till 23:30. Want me to book it?"]}
+{"suite": "router", "text": "can you get us a table at Dragon Wok tomorrow", "expect": "book_table"}
+{"suite": "router", "text": "hi aria", "expect": "chitchat"}
+{"suite": "router", "text": "tell me a joke", "expect": "chitchat"}
+{"suite": "router", "text": "thanks aria!", "expect": "chitchat"}
+{"suite": "router", "text": "what's a vector database?", "expect": "chitchat"}
+{"suite": "router", "text": "what's the capital of France?", "expect": "chitchat"}
+{"suite": "router", "text": "good morning everyone", "expect": "chitchat"}
+{"suite": "speak", "history": ["alice: where should we have dinner tonight?", "bob: no idea, anything is fine", "alice: maybe italian or chinese?"], "expect": "restaurants"}
+{"suite": "speak", "history": ["alice: I'm starving", "bob: same, lunch?", "alice: pizza?"], "expect": "restaurants"}
+{"suite": "speak", "history": ["alice: team lunch on friday?", "bob: yes! where?", "carol: somewhere with veg options"], "expect": "restaurants"}
+{"suite": "speak", "history": ["alice: did you see that meme", "bob: haha yes", "alice: so good"], "expect": "none"}
+{"suite": "speak", "history": ["alice: have a great day", "bob: you too!"], "expect": "none"}
+{"suite": "speak", "history": ["alice: the build is failing again", "bob: check the logs", "alice: found it, missing env var"], "expect": "none"}
+{"suite": "speak", "history": ["alice: good morning", "bob: morning!"], "expect": "none"}
+{"suite": "speak", "history": ["a: wait, what did we decide about the launch date?", "b: I thought Friday", "c: no, Monday", "a: ugh, I lost track of this whole thread", "b: too many messages here, can't follow"], "expect": "summary"}
+{"suite": "retrieval", "question": "How many days of annual leave do employees get?", "expect_substring": "24 days"}
+{"suite": "retrieval", "question": "Can unused leave be carried over to next year?", "expect_substring": "5 days"}
+{"suite": "retrieval", "question": "How many days a week can I work remotely?", "expect_substring": "three days a week"}
+{"suite": "retrieval", "question": "What is the notice period when resigning?", "expect_substring": "60 days"}
+{"suite": "retrieval", "question": "How much is the yearly learning budget?", "expect_substring": "40,000"}
+{"suite": "retrieval", "question": "How often are laptops refreshed?", "expect_substring": "36 months"}
+{"suite": "retrieval", "question": "How quickly must a security incident be reported?", "expect_substring": "within 1 hour"}
+{"suite": "retrieval", "question": "What is the on-call stipend?", "expect_substring": "1,500"}
+{"suite": "router", "text": "cancel my table at Saffron Table", "expect": "cancel_booking"}
+{"suite": "router", "text": "never mind that booking at Bella Notte", "expect": "cancel_booking"}
+{"suite": "router", "text": "I want to cancel my reservation", "expect": "cancel_booking"}

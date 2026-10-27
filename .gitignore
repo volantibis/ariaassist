@@ -1,0 +1,14 @@
+.env
+.venv/
+.chroma/
+node_modules/
+__pycache__/
+*.pyc
+dist/
+.pytest_cache/
+.ruff_cache/
+uploads/
+*.db
+docs/
+**/.DS_Store
+.continue/

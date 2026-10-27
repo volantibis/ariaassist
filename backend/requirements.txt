@@ -1,0 +1,11 @@
+# Core runtime (also what the Docker image installs)
+fastapi
+uvicorn[standard]
+pydantic>=2
+pydantic-settings
+httpx
+python-multipart
+langgraph
+langchain-text-splitters
+Pillow  # downscale oversized images before captioning (keeps qwen3-vl on Ollama happy)
+pypdf
