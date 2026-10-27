@@ -9,6 +9,5 @@ dist/
 .ruff_cache/
 uploads/
 *.db
-docs/
 **/.DS_Store
 .continue/
