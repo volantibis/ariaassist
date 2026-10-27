@@ -13,7 +13,7 @@ PREFIX="${PREFIX:-aria$RANDOM}"        # lowercase letters/digits; makes global 
 LOCATION="${LOCATION:-eastus}"         # must offer the models below
 SWA_LOCATION="${SWA_LOCATION:-eastus2}" # Static Web Apps supports a limited set of regions
 RG="rg-aria"
-CHAT_MODEL="gpt-4o-mini";            CHAT_VERSION="2024-07-18"
+CHAT_MODEL="gpt-5.1";            CHAT_VERSION="2026-05-15"
 EMBED_MODEL="text-embedding-3-small"; EMBED_VERSION="1"
 SEARCH_SKU="free"                      # one free search service per subscription; use basic otherwise
 # ----------------------------------------------------------------------------
