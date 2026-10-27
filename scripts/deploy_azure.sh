@@ -18,10 +18,33 @@ EMBED_MODEL="text-embedding-3-small"; EMBED_VERSION="1"
 SEARCH_SKU="free"                      # one free search service per subscription; use basic otherwise
 # ----------------------------------------------------------------------------
 
+
 ACR="${PREFIX}acr"; PLAN="asp-aria"; WEBAPP="${PREFIX}-api"; KV="${PREFIX}-kv"
 SEARCH="${PREFIX}-search"; AI="${PREFIX}-ai"; SWA="${PREFIX}-web"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 echo "Using prefix: $PREFIX"
+
+# Check global availability
+REGISTRY_AVAILABLE=$(az acr check-name-availability --name "$ACR_NAME" --query nameAvailable --output tsv)
+
+if [ "$REGISTRY_AVAILABLE" = "true" ]; then
+    echo "Registry name '$ACR_NAME' is available. Creating resource..."
+    az acr create --resource-group "$RESOURCE_GROUP" --name "$ACR_NAME" --sku Basic
+else
+    echo "Registry name '$ACR_NAME' is already claimed. Verifying ownership..."
+    
+    # Check if it belongs to your subscription
+    OUR_REGISTRY=$(az acr list --query "[?name=='$ACR_NAME'].name" --output tsv)
+    
+    if [ -n "$OUR_REGISTRY" ]; then
+        echo "Found existing registry belonging to your subscription. Skipping creation step."
+    else
+        echo "ERROR: Registry name '$ACR_NAME' is globally taken by someone else."
+        echo "Action required: Change the ACR_NAME variable in this script to something unique."
+        exit 1
+    fi
+fi
+echo "Proceeding to container build stage..."
 
 echo "== 1. Resource group"
 az group create -n "$RG" -l "$LOCATION" -o none
