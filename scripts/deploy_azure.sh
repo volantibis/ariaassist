@@ -19,7 +19,7 @@ SEARCH_SKU="free"                      # one free search service per subscriptio
 # ----------------------------------------------------------------------------
 
 
-ACR="${PREFIX}acr"; PLAN="asp-aria"; WEBAPP="${PREFIX}-api"; KV="${PREFIX}-kv"
+ACR_NAME="${PREFIX}acr"; PLAN="asp-aria"; WEBAPP="${PREFIX}-api"; KV="${PREFIX}-kv"
 SEARCH="${PREFIX}-search"; AI="${PREFIX}-ai"; SWA="${PREFIX}-web"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 echo "Using prefix: $PREFIX"
