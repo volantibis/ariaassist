@@ -1,121 +1,306 @@
 #!/usr/bin/env bash
-# Deploy Aria to Azure: ACR + App Service (container) + Key Vault + AI Search + model deployments
-# + Static Web Apps. Written from the az CLI docs; it was NOT executed by its author, so read each
-# step, check flags with `az <command> -h`, and run it block by block the first time.
+# Deploy Aria to the EXISTING Azure infrastructure.
+# Backend: Azure Container Apps
+# Image: Azure Container Registry
+# LLM: Azure AI Foundry
+# Vector search: Azure AI Search
+# Secrets: Azure Key Vault
+# Frontend: deployed separately by GitHub Actions / Static Web Apps
 #
-# Prerequisites: az CLI logged in (`az login`), Node 20+ (for the SWA CLI), a subscription with
-# Azure OpenAI access and quota in $LOCATION. Cost: App Service B1 + ACR Basic run continuously;
-# tear down with `az group delete -n $RG --yes --no-wait` when you are done.
-set -euo pipefail
+# Run from any directory:
+#   bash scripts/deploy_azure.sh
+#
+# Prerequisites:
+#   - Azure CLI logged in to the intended subscription
+#   - Permission to build in ACR and assign Azure RBAC roles
+#   - Permission to read/create the required Key Vault secrets
 
-# ------------------------------------------------------------------ edit these
-PREFIX="${PREFIX:-aria$RANDOM}"        # lowercase letters/digits; makes global names unique
-LOCATION="${LOCATION:-eastus}"         # must offer the models below
-SWA_LOCATION="${SWA_LOCATION:-eastus2}" # Static Web Apps supports a limited set of regions
+set -Eeuo pipefail
+
+# -------------------------------------------------------------------
+# Existing infrastructure — do not generate new resource names here.
+# -------------------------------------------------------------------
+
 RG="rg-aria"
-CHAT_MODEL="gpt-4o-mini";            CHAT_VERSION="2024-07-18"
-EMBED_MODEL="text-embedding-3-small"; EMBED_VERSION="1"
-SEARCH_SKU="free"                      # one free search service per subscription; use basic otherwise
-# ----------------------------------------------------------------------------
+LOCATION="eastus"
 
+ACR="agentariaacr"
+APP="agentaria"
+KV="agentaria"
+SEARCH="as-agentaria"
+FOUNDRY="agentaria-foundry"
 
-ACR_NAME="${PREFIX}acr"; PLAN="asp-aria"; WEBAPP="${PREFIX}-api"; KV="${PREFIX}-kv"
-SEARCH="${PREFIX}-search"; AI="${PREFIX}-ai"; SWA="${PREFIX}-web"
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-echo "Using prefix: $PREFIX"
+SWA_ORIGIN="https://agreeable-forest-06d9f9500.4.azurestaticapps.net"
 
-# Check global availability
-REGISTRY_AVAILABLE=$(az acr check-name --name "$ACR_NAME" --query nameAvailable --output tsv)
+FOUNDRY_ENDPOINT="https://${FOUNDRY}.cognitiveservices.azure.com/"
+FOUNDRY_CHAT_DEPLOYMENT="gpt-4.1-mini"
+FOUNDRY_EMBED_DEPLOYMENT="text-embedding-3-small"
+FOUNDRY_API_VERSION="2024-10-21"
 
-if [ "$REGISTRY_AVAILABLE" = "true" ]; then
-    echo "Registry name '$ACR_NAME' is available. Creating resource..."
-    az acr create --resource-group "$RESOURCE_GROUP" --name "$ACR_NAME" --sku Basic
-else
-    echo "Registry name '$ACR_NAME' is already claimed. Verifying ownership..."
-    
-    # Check if it belongs to your subscription
-    OUR_REGISTRY=$(az acr list --query "[?name=='$ACR_NAME'].name" --output tsv)
-    
-    if [ -n "$OUR_REGISTRY" ]; then
-        echo "Found existing registry belonging to your subscription. Skipping creation step."
-    else
-        echo "ERROR: Registry name '$ACR_NAME' is globally taken by someone else."
-        echo "Action required: Change the ACR_NAME variable in this script to something unique."
-        exit 1
-    fi
+SEARCH_INDEX="aria-docs"
+EMBED_DIM="1536"
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+TAG="deploy-$(date -u +%Y%m%d%H%M%S)"
+IMAGE="${ACR}.azurecr.io/aria-backend:${TAG}"
+BACKEND_URL="https://${APP}.kindplant-340166a2.eastus.azurecontainerapps.io"
+
+echo "Deploying Aria"
+echo "Resource group: $RG"
+echo "Container App:  $APP"
+echo "Image:          $IMAGE"
+
+# -------------------------------------------------------------------
+# 1. Validate existing resources and Azure subscription.
+# -------------------------------------------------------------------
+
+echo "== 1. Validate Azure resources"
+
+az account show --output table
+
+az group show \
+  --name "$RG" \
+  --output none
+
+az acr show \
+  --name "$ACR" \
+  --resource-group "$RG" \
+  --output none
+
+az containerapp show \
+  --name "$APP" \
+  --resource-group "$RG" \
+  --output none
+
+az keyvault show \
+  --name "$KV" \
+  --output none
+
+az search service show \
+  --name "$SEARCH" \
+  --resource-group "$RG" \
+  --output none
+
+az cognitiveservices account show \
+  --name "$FOUNDRY" \
+  --resource-group "$RG" \
+  --output none
+
+echo "Existing resources verified."
+
+# -------------------------------------------------------------------
+# 2. Ensure ACR authentication and managed-identity permissions.
+# -------------------------------------------------------------------
+
+echo "== 2. Configure container registry access"
+
+ACR_ID="$(az acr show \
+  --name "$ACR" \
+  --resource-group "$RG" \
+  --query id -o tsv)"
+
+ACR_AUTH="$(az acr config authentication-as-arm show \
+  --registry "$ACR" \
+  --query status -o tsv)"
+
+if [[ "$ACR_AUTH" != "enabled" ]]; then
+  az acr config authentication-as-arm update \
+    --registry "$ACR" \
+    --status enabled
 fi
-echo "Proceeding to container build stage..."
 
-echo "== 1. Resource group"
-az group create -n "$RG" -l "$LOCATION" -o none
+az containerapp registry set \
+  --name "$APP" \
+  --resource-group "$RG" \
+  --server "${ACR}.azurecr.io" \
+  --identity system \
+  --output none
 
-echo "== 2. Container registry, and build the image in Azure (no local Docker needed)"
-az acr create -g "$RG" -n "$ACR" --sku Basic -o none
-# az acr build -r "$ACR" -t aria-backend:latest "$ROOT/backend"
+PRINCIPAL_ID="$(az containerapp show \
+  --name "$APP" \
+  --resource-group "$RG" \
+  --query identity.principalId -o tsv)"
 
-echo "== 3. Model resource and deployments (Azure OpenAI endpoint, usable from AI Foundry)"
-az cognitiveservices account create -g "$RG" -n "$AI" --kind OpenAI --sku S0 -l "$LOCATION" \
-  --custom-domain "$AI" -o none
-az cognitiveservices account deployment create -g "$RG" -n "$AI" --deployment-name chat \
-  --model-name "$CHAT_MODEL" --model-version "$CHAT_VERSION" --model-format OpenAI \
-  --sku-name Standard --sku-capacity 10 -o none
-az cognitiveservices account deployment create -g "$RG" -n "$AI" --deployment-name embed \
-  --model-name "$EMBED_MODEL" --model-version "$EMBED_VERSION" --model-format OpenAI \
-  --sku-name Standard --sku-capacity 10 -o none
-AI_ENDPOINT="$(az cognitiveservices account show -g "$RG" -n "$AI" --query properties.endpoint -o tsv)"
-AI_KEY="$(az cognitiveservices account keys list -g "$RG" -n "$AI" --query key1 -o tsv)"
+if [[ -z "$PRINCIPAL_ID" || "$PRINCIPAL_ID" == "None" ]]; then
+  echo "ERROR: Container App system-assigned identity is missing." >&2
+  exit 1
+fi
 
-echo "== 4. AI Search"
-az search service create -g "$RG" -n "$SEARCH" --sku "$SEARCH_SKU" -l "$LOCATION" -o none
-SEARCH_KEY="$(az search admin-key show -g "$RG" --service-name "$SEARCH" --query primaryKey -o tsv)"
+HAS_ACR_PULL="$(az role assignment list \
+  --assignee "$PRINCIPAL_ID" \
+  --scope "$ACR_ID" \
+  --query "[?roleDefinitionName=='AcrPull'] | length(@)" \
+  -o tsv)"
 
-echo "== 5. Key Vault (RBAC mode) and secrets"
-az keyvault create -g "$RG" -n "$KV" -l "$LOCATION" --enable-rbac-authorization true -o none
-KV_ID="$(az keyvault show -n "$KV" --query id -o tsv)"
-ME="$(az ad signed-in-user show --query id -o tsv)"
-az role assignment create --assignee "$ME" --role "Key Vault Secrets Officer" --scope "$KV_ID" -o none
-echo "   waiting for role assignment to propagate..."; sleep 45
-az keyvault secret set --vault-name "$KV" -n azure-foundry-api-key --value "$AI_KEY" -o none
-az keyvault secret set --vault-name "$KV" -n azure-search-key --value "$SEARCH_KEY" -o none
+if [[ "$HAS_ACR_PULL" == "0" ]]; then
+  az role assignment create \
+    --assignee "$PRINCIPAL_ID" \
+    --role "AcrPull" \
+    --scope "$ACR_ID" \
+    --output none
+  echo "Assigned AcrPull to Container App identity."
+else
+  echo "AcrPull assignment already exists."
+fi
 
-echo "== 6. App Service running the container, with a managed identity"
-az appservice plan create -g "$RG" -n "$PLAN" --is-linux --sku B1 -o none
-ACR_ID="$(az acr show -n "$ACR" --query id -o tsv)"
-az webapp create -g "$RG" -p "$PLAN" -n "$WEBAPP" \
-  --deployment-container-image-name "$ACR.azurecr.io/aria-backend:latest" -o none
-PRINCIPAL="$(az webapp identity assign -g "$RG" -n "$WEBAPP" --query principalId -o tsv)"
-az role assignment create --assignee "$PRINCIPAL" --role AcrPull --scope "$ACR_ID" -o none
-az role assignment create --assignee "$PRINCIPAL" --role "Key Vault Secrets User" --scope "$KV_ID" -o none
-az webapp config set -g "$RG" -n "$WEBAPP" --web-sockets-enabled true --always-on true \
-  --generic-configurations '{"acrUseManagedIdentityCreds": true}' -o none
+# -------------------------------------------------------------------
+# 3. Ensure Key Vault secret aliases exist.
+#    Never print secret values.
+# -------------------------------------------------------------------
 
-echo "== 7. Static Web App for the React build"
-az staticwebapp create -g "$RG" -n "$SWA" -l "$SWA_LOCATION" --sku Free -o none
-SWA_HOST="$(az staticwebapp show -g "$RG" -n "$SWA" --query defaultHostname -o tsv)"
+echo "== 3. Verify Key Vault secret aliases"
 
-echo "== 8. App settings (no secrets here: keys come from Key Vault at runtime)"
-az webapp config appsettings set -g "$RG" -n "$WEBAPP" -o none --settings \
-  WEBSITES_PORT=8000 \
-  LLM_PROVIDER=azure_foundry VECTOR_PROVIDER=azure_search SECRETS_PROVIDER=keyvault \
-  AZURE_FOUNDRY_ENDPOINT="${AI_ENDPOINT%/}" AZURE_FOUNDRY_CHAT_DEPLOYMENT=chat \
-  AZURE_FOUNDRY_EMBED_DEPLOYMENT=embed AZURE_EMBED_DIM=1536 \
-  AZURE_SEARCH_ENDPOINT="https://${SEARCH}.search.windows.net" AZURE_SEARCH_INDEX=aria-docs \
-  AZURE_KEYVAULT_URL="https://${KV}.vault.azure.net" \
-  SQLITE_PATH=/home/aria.db UPLOAD_DIR=/home/uploads \
-  CORS_ORIGINS="https://${SWA_HOST}"
-az webapp restart -g "$RG" -n "$WEBAPP"
+KV_ID="$(az keyvault show \
+  --name "$KV" \
+  --query id -o tsv)"
 
-echo "== 9. Build and deploy the frontend"
-( cd "$ROOT/frontend" && npm ci && VITE_API_URL="https://${WEBAPP}.azurewebsites.net" npm run build )
-SWA_TOKEN="$(az staticwebapp secrets list -g "$RG" -n "$SWA" --query properties.apiKey -o tsv)"
-npx --yes @azure/static-web-apps-cli deploy "$ROOT/frontend/dist" \
-  --deployment-token "$SWA_TOKEN" --env production
+ensure_secret_alias() {
+  local source_name="$1"
+  local target_name="$2"
+  local secret_value
+
+  if az keyvault secret show \
+    --vault-name "$KV" \
+    --name "$target_name" \
+    --query id -o tsv >/dev/null 2>&1; then
+    echo "Secret alias exists: $target_name"
+    return
+  fi
+
+  echo "Creating missing secret alias: $target_name"
+
+  if ! secret_value="$(az keyvault secret show \
+    --vault-name "$KV" \
+    --name "$source_name" \
+    --query value -o tsv)"; then
+    echo "ERROR: Cannot read source secret: $source_name" >&2
+    return 1
+  fi
+
+  if [[ -z "$secret_value" ]]; then
+    echo "ERROR: Source secret is empty: $source_name" >&2
+    unset secret_value
+    return 1
+  fi
+
+  az keyvault secret set \
+    --vault-name "$KV" \
+    --name "$target_name" \
+    --value "$secret_value" \
+    --query id -o tsv >/dev/null
+
+  unset secret_value
+}
+
+ensure_secret_alias "Foundry-API-Key" "azure-foundry-api-key"
+ensure_secret_alias "Foundry-Search-Key" "azure-search-key"
+
+HAS_KV_ACCESS="$(az role assignment list \
+  --assignee "$PRINCIPAL_ID" \
+  --scope "$KV_ID" \
+  --query "[?roleDefinitionName=='Key Vault Secrets User'] | length(@)" \
+  -o tsv)"
+
+if [[ "$HAS_KV_ACCESS" == "0" ]]; then
+  az role assignment create \
+    --assignee "$PRINCIPAL_ID" \
+    --role "Key Vault Secrets User" \
+    --scope "$KV_ID" \
+    --output none
+  echo "Assigned Key Vault Secrets User to Container App identity."
+else
+  echo "Key Vault Secrets User assignment already exists."
+fi
+
+# -------------------------------------------------------------------
+# 4. Build a uniquely tagged image directly in ACR.
+# -------------------------------------------------------------------
+
+echo "== 4. Build and push backend image"
+
+az acr build \
+  --registry "$ACR" \
+  --image "aria-backend:${TAG}" \
+  "$ROOT/backend"
+
+echo "Image build completed: $IMAGE"
+
+# -------------------------------------------------------------------
+# 5. Update the existing Container App.
+#    No App Service or duplicate AI resources are created.
+# -------------------------------------------------------------------
+
+echo "== 5. Deploy backend revision"
+
+az containerapp update \
+  --name "$APP" \
+  --resource-group "$RG" \
+  --image "$IMAGE" \
+  --set-env-vars \
+    "LLM_PROVIDER=azure_foundry" \
+    "VECTOR_PROVIDER=azure_search" \
+    "SECRETS_PROVIDER=keyvault" \
+    "AZURE_FOUNDRY_ENDPOINT=${FOUNDRY_ENDPOINT}" \
+    "AZURE_FOUNDRY_CHAT_DEPLOYMENT=${FOUNDRY_CHAT_DEPLOYMENT}" \
+    "AZURE_FOUNDRY_EMBED_DEPLOYMENT=${FOUNDRY_EMBED_DEPLOYMENT}" \
+    "AZURE_FOUNDRY_API_VERSION=${FOUNDRY_API_VERSION}" \
+    "AZURE_EMBED_DIM=${EMBED_DIM}" \
+    "AZURE_SEARCH_ENDPOINT=https://${SEARCH}.search.windows.net" \
+    "AZURE_SEARCH_INDEX=${SEARCH_INDEX}" \
+    "AZURE_KEYVAULT_URL=https://${KV}.vault.azure.net/" \
+    "CORS_ORIGINS=${SWA_ORIGIN}" \
+    "ARIA_DEPLOYMENT_REV=${TAG}"
+
+# -------------------------------------------------------------------
+# 6. Inspect revision status and test health.
+# -------------------------------------------------------------------
+
+echo "== 6. Check Container App revision"
+
+az containerapp revision list \
+  --name "$APP" \
+  --resource-group "$RG" \
+  --output table
+
+echo "Waiting briefly for the new revision to start..."
+sleep 15
+
+echo "== 7. Test backend health"
+
+if curl --fail --silent --show-error \
+  "${BACKEND_URL}/health"; then
+  echo
+  echo "Backend health endpoint responded successfully."
+else
+  echo
+  echo "WARNING: Health check failed. Inspect revision status and logs."
+  echo "Logs:"
+  az containerapp logs show \
+    --name "$APP" \
+    --resource-group "$RG" \
+    --type console \
+    --tail 50 || true
+  exit 1
+fi
+
+# -------------------------------------------------------------------
+# 7. Frontend deployment is handled by the existing GitHub workflow.
+# -------------------------------------------------------------------
 
 cat <<EOF
 
-Done.
-  Frontend : https://${SWA_HOST}
-  Backend  : https://${WEBAPP}.azurewebsites.net/health
-  Logs     : az webapp log tail -g $RG -n $WEBAPP
-  Teardown : az group delete -n $RG --yes --no-wait
+Backend deployment submitted.
+
+Image:    ${IMAGE}
+Backend:  ${BACKEND_URL}
+Health:   ${BACKEND_URL}/health
+Frontend: ${SWA_ORIGIN}
+
+The frontend is deployed separately by GitHub Actions.
+Ensure repository variable VITE_API_URL is set to:
+${BACKEND_URL}
+
+Then push frontend/workflow changes to main and verify the
+Static Web Apps workflow succeeds.
+
 EOF
