@@ -25,7 +25,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 echo "Using prefix: $PREFIX"
 
 # Check global availability
-REGISTRY_AVAILABLE=$(az acr check-name-availability --name "$ACR_NAME" --query nameAvailable --output tsv)
+REGISTRY_AVAILABLE=$(az acr check-name --name "$ACR_NAME" --query nameAvailable --output tsv)
 
 if [ "$REGISTRY_AVAILABLE" = "true" ]; then
     echo "Registry name '$ACR_NAME' is available. Creating resource..."
