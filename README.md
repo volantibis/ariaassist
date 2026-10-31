@@ -30,9 +30,6 @@ flowchart LR
     Secrets -.-> VS
 ```
 
-Full design: [`docs/HLD.md`](docs/HLD.md) (flows, deployment, trade-offs) and
-[`docs/LLD.md`](docs/LLD.md) (contracts, schemas, agent nodes).
-
 ## What makes it interesting
 
 - **Agent as a chat member:** it decides *when* to speak (mention, or proactive with cooldown) and *what*

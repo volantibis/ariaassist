@@ -1,7 +1,17 @@
-export const API_URL: string = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
+export const API_URL: string = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8000";
 export const WS_URL: string = import.meta.env.VITE_WS_URL ?? API_URL.replace(/^http/, "ws") + "/ws";
 
 export const ACCEPTED_FILES = ".pdf,.txt,.md,.png,.jpg,.jpeg,.webp";
+
+/** Returns true when the backend /health endpoint reports OK. */
+export async function checkHealth(): Promise<boolean> {
+  try {
+    const res = await fetch(`${API_URL}/health`, { signal: AbortSignal.timeout(3000) });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
 
 /** Upload a document or image. Resolves to an error message, or null on success. */
 export async function uploadFile(file: File, uploader: string): Promise<string | null> {
