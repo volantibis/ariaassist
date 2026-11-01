@@ -8,8 +8,18 @@ from dataclasses import asdict
 from typing import Annotated, Any
 
 import httpx
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import (
+    Body,
+    FastAPI,
+    File,
+    Form,
+    HTTPException,
+    UploadFile,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
 from app.agent.graph import build_graph
 from app.agent.service import AriaService
@@ -25,6 +35,16 @@ from app.providers.factory import make_llm, make_secrets, make_vector_store
 MAX_TEXT = 2000
 CLOSE_BAD_NAME = 4400
 CLOSE_NAME_TAKEN = 4409
+
+
+class SettingsPatch(BaseModel):
+    """Partial settings a client may change at runtime (validated on assignment)."""
+
+    retrieval_k: int | None = None
+    retrieval_min_score: float | None = None
+    proactive_enabled: bool | None = None
+    proactive_every_n: int | None = None
+    proactive_cooldown_s: int | None = None
 
 
 def _ollama_error_hint(response: httpx.Response) -> str:
@@ -73,6 +93,7 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        app.state.settings = cfg
         secrets = make_secrets(cfg)
         app.state.db = db or Database(cfg.sqlite_path)
         app.state.llm = llm or make_llm(cfg, secrets)
@@ -99,23 +120,43 @@ def create_app(
 
     # ----------------------------------------------------------------- REST
 
-    @app.get("/_debug_settings")
-    def debug_settings():
-        # 1. Print it to your Uvicorn terminal console to inspect it
-        print("DEBUG SETTINGS OBJECT:", cfg, type(cfg))
-        
-        # 2. Prevent the crash if it's None
-        if cfg is None:
-            return {"error": "The settings object is None. Check your app/config.py file."}
-            
-        # 3. Handle both Pydantic v2 (.model_dump) and Pydantic v1 (.dict)
-        if hasattr(cfg, "model_dump"):
-            return cfg.model_dump()
-        elif hasattr(cfg, "dict"):
-            return cfg.dict()
-            
-        # 4. Fallback if it's just a normal object/class
-        return vars(cfg)
+    def _public_settings() -> dict[str, Any]:
+        """Subset of settings safe to show to clients and to change at runtime."""
+        s: Settings = app.state.settings
+        return {
+            "provider": s.llm_provider,
+            "chat_model": s.ollama_chat_model,
+            "embed_model": s.ollama_embed_model,
+            "vision_model": s.ollama_vision_model,
+            "retrieval_k": s.retrieval_k,
+            "retrieval_min_score": s.retrieval_min_score,
+            "proactive_enabled": s.proactive_enabled,
+            "proactive_every_n": s.proactive_every_n,
+            "proactive_cooldown_s": s.proactive_cooldown_s,
+        }
+
+    @app.get("/api/settings")
+    async def settings_get() -> dict[str, Any]:
+        return _public_settings()
+
+    @app.post("/api/settings")
+    async def settings_post(patch: Annotated[SettingsPatch, Body()]) -> dict[str, Any]:
+        s: Settings = app.state.settings
+        updates = patch.model_dump(exclude_unset=True)
+        if "retrieval_k" in updates and updates["retrieval_k"] < 1:
+            raise HTTPException(400, "retrieval_k must be >= 1")
+        if "retrieval_min_score" in updates and not 0 <= updates["retrieval_min_score"] <= 1:
+            raise HTTPException(400, "retrieval_min_score must be between 0 and 1")
+        if "proactive_every_n" in updates and updates["proactive_every_n"] < 1:
+            raise HTTPException(400, "proactive_every_n must be >= 1")
+        if "proactive_cooldown_s" in updates and updates["proactive_cooldown_s"] < 0:
+            raise HTTPException(400, "proactive_cooldown_s must be >= 0")
+        for key, value in updates.items():
+            setattr(s, key, value)  # pydantic re-validates on assignment
+        # The service and graph hold the same Settings object, so new agent runs
+        # pick up the new values immediately. Tell every connected client.
+        await app.state.room.broadcast({"type": "settings", "settings": _public_settings()})
+        return _public_settings()
 
 
     @app.get("/health")

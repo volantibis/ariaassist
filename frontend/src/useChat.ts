@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { uploadFile, WS_URL } from "./api";
-import type { ChatMessage, ServerEvent, Status } from "./types";
+import { fetchSettings, updateSettings, uploadFile, WS_URL } from "./api";
+import type { ChatMessage, ServerEvent, Settings, Status } from "./types";
 
 /** Backoff delays (ms) between reconnection attempts. */
 const RECONNECT_DELAYS = [1000, 2000, 4000, 8000];
@@ -11,6 +11,7 @@ export function useChat(name: string, onLeave: (reason: string) => void) {
   const [users, setUsers] = useState<string[]>([]);
   const [typing, setTyping] = useState<string[]>([]);
   const [status, setStatus] = useState<Status>("connecting");
+  const [settings, setSettings] = useState<Settings | null>(null);
   const [uploading, setUploading] = useState(false);
   const [notice, setNotice] = useState("");
   const wsRef = useRef<WebSocket | null>(null);
@@ -28,6 +29,7 @@ export function useChat(name: string, onLeave: (reason: string) => void) {
     ws.onopen = () => {
       setStatus("open");
       attemptRef.current = 0;
+      void fetchSettings().then(setSettings);
     };
     ws.onclose = (e) => {
       setStatus("closed");
@@ -59,6 +61,8 @@ export function useChat(name: string, onLeave: (reason: string) => void) {
           return setTyping((t) =>
             ev.on ? [...new Set([...t, ev.who])] : t.filter((x) => x !== ev.who),
           );
+        case "settings":
+          return setSettings(ev.settings);
       }
     };
   };
@@ -88,6 +92,15 @@ export function useChat(name: string, onLeave: (reason: string) => void) {
     [sendJson],
   );
 
+  const setRemoteSettings = useCallback(
+    async (patch: object): Promise<Settings | null> => {
+      const updated = await updateSettings(patch);
+      if (updated) setSettings(updated);
+      return updated;
+    },
+    [],
+  );
+
   const upload = useCallback(
     async (file: File) => {
       setUploading(true);
@@ -99,5 +112,5 @@ export function useChat(name: string, onLeave: (reason: string) => void) {
     [name],
   );
 
-  return { messages, users, typing, status, uploading, notice, send, confirm, upload };
+  return { messages, users, typing, status, uploading, notice, settings, send, confirm, setRemoteSettings, upload };
 }

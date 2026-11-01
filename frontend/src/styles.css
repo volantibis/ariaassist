@@ -115,18 +115,6 @@ header {
 .status.open { color: #15803d; border-color: #d1e7d6; background: #ecfdf3; }
 .header-right { display: flex; align-items: center; gap: 10px; margin-left: auto; }
 .users { color: var(--muted); font-size: 13px; text-align: right; padding-right: 4px; }
-.info-btn {
-  background: var(--accent);
-  color: #fff;
-  border: 1px solid #e57a46;
-  border-radius: 10px;
-  width: 32px; height: 32px;
-  display: grid; place-items: center;
-  font-size: 16px; line-height: 1;
-  cursor: pointer; padding: 0;
-}
-.info-btn:hover:not(:disabled) { background: var(--accent-hover); border-color: #c96a38; }
-.info-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* ---------- Notice / drag overlay ---------- */
 .notice {
@@ -199,32 +187,198 @@ header {
   text-align: center;
 }
 
-/* ---------- Info popup ---------- */
-.info-backdrop {
-  position: fixed; inset: 0; z-index: 60;
-  background: rgba(0, 0, 0, 0.4);
-  display: flex; align-items: center; justify-content: center;
+/* ---------- Settings accordion ---------- */
+.settings-accordion {
+  position: relative;
+  width: 100%;
+  margin-top: -1px; /* sink into the header border so they read as one unit */
+  z-index: 40;
 }
-.info-popup {
+
+/* Shared wrapper for the collapsed tab and expanded panel: one consistent width
+   constraint for both states, centred on the page. The border lives here so the
+   same outline surrounds the tab when collapsed and grows to enclose the whole
+   panel (models, form, save button) when expanded - no nested or duplicate
+   borders, and no change in width or horizontal position when toggling. */
+.settings-column {
+  position: relative;
+  width: 440px;
+  max-width: 92%;
+  margin: 0 auto;
+  border: 1px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 16px 16px;
+  background: var(--panel);
+}
+
+/* Collapsed toggle: compact inverted-tab pill hanging from the header's
+   bottom edge. Content-sized width, small height, minimal padding, centred
+   along the header bottom edge. Square top edge blends into the header
+   boundary; curved bottom corners give the inverted-tab silhouette.
+   Same background as the attached panel, 1px border in the header's
+   border colour so it reads as one unit with the header. */
+.settings-toggle {
+  width: 100%;
+  height: 32px;
+  border: none; /* border is owned by the shared .settings-column wrapper */
+  background: var(--panel);
+  color: var(--text);
+  font: inherit; font-weight: 600; font-size: 13px;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  text-align: center;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+.settings-toggle:hover:not([aria-expanded="true"]) {
+  background: var(--bg);
+}
+
+.settings-toggle:focus-visible { outline-offset: -2px; }
+.toggle-label { font-weight: 900; color: var(--text); opacity: 0.95; }
+.settings-trigger-placeholder {
+  width: 20px; height: 20px; flex-shrink: 0; opacity: 0.55;
+}
+.toggle-chevron { flex-shrink: 0; font-size: 12px; color: var(--muted); }
+
+/* Settings panel: fills the shared wrapper width so it lines up exactly with
+   the tab above. Positioned absolutely so it overlaps (not displaces) the chat
+   below. The panel carries the left/right/bottom border that continues down
+   from the tab's bottom edge (border-top: none), so the same outline grows
+   vertically around the whole component - no doubled border, no seam, no gap
+   between the tab and the panel. */
+.settings-panel {
+  position: absolute;
+  left: 0;
+  top: 100%;
+  width: 100%;
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 24px;
-  max-width: 440px; width: 90%; max-height: 80vh;
+  border-top: none; /* merges with the tab's bottom edge - no doubled border */
+  border-radius: 0 0 16px 16px;
+  animation: settingsSlideDown 180ms ease-out;
   overflow-y: auto;
-  box-shadow: var(--shadow);
-  position: relative;
+  max-height: 45vh;
+  padding: 12px 16px 30px;
+  z-index: 1; /* floats above the chat without displacing it */
 }
-.info-popup h2 { margin: 0 0 14px; font-size: 18px; }
-.info-popup p { margin: 0 0 12px; font-size: 14px; line-height: 1.6; color: var(--text); }
-.info-popup p:last-child { margin-bottom: 0; }
-.info-popup a { color: var(--accent); text-decoration: underline; }
-.info-close {
-  position: absolute; top: 10px; right: 14px;
-  background: transparent; border: none; color: var(--muted);
-  font-size: 20px; line-height: 1; cursor: pointer; padding: 0 4px;
+
+/* Compact typography & spacing throughout the expanded panel. */
+.settings-panel h3 {
+  margin: 0 0 6px; font-size: 11.5px; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--text); font-weight: 900;
 }
-.info-close:hover { color: var(--text); }
+.settings-panel p { margin: 0 0 8px; font-size: 13px; line-height: 1.5; color: var(--text); font-weight: 600; }
+.settings-panel p:last-child { margin-bottom: 0; }
+.settings-panel .settings-hint {
+  color: #374151; font-weight: 600; font-size: 12px; margin-bottom: 10px;
+}
+.settings-panel .field label {
+  color: var(--text); font-weight: 800; font-size: 12px; margin-bottom: 2px;
+}
+.settings-panel .row-env {
+  font-size: 10.5px; color: var(--muted); font-weight: 500; margin-left: 4px;
+}
+
+/* Models strip across the top of the expanded panel. Same background as the
+   panel - no card, no separator, no separate strip. Stays visible while the
+   fields scroll. */
+.settings-panel .models-strip {
+  position: sticky; top: 0;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 0 12px 0;
+  margin: 0;
+  background: var(--panel);
+}
+.settings-panel .models-icon { font-size: 14px; margin-right: 6px; opacity: 0.8; }
+.settings-panel .models-chip {
+  font-size: 12px; font-weight: 700; color: var(--text);
+  white-space: nowrap; opacity: 0.95;
+}
+.settings-panel .models-chip:not(:last-child) { flex: 1; text-align: center; }
+
+.settings-panel .models-note {
+  font-size: 11px; color: var(--text); font-weight: 600;
+  margin: 0 0 14px; text-align: left;
+}
+
+.settings-hint { font-size: 12px; color: var(--muted); margin-bottom: 10px; }
+
+.settings-list {
+  list-style: none; padding: 0; margin: 0 0 10px;
+  border: 1px solid var(--border); border-radius: 10px;
+}
+.settings-list li {
+  display: flex; justify-content: space-between; gap: 10px;
+  padding: 6px 10px; border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+.settings-list li:last-child { border-bottom: none; }
+.settings-list li span:first-child { color: var(--muted); font-weight: 600; }
+.settings-value {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px; color: var(--text); font-weight: 700;
+}
+
+/* Two-column settings form: labels in the left column, controls in the right,
+   aligned row by row with consistent heights and spacing. */
+.settings-fields {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 10px 16px;
+  align-items: center;
+  margin: 0; padding: 0;
+}
+.settings-fields .field.row {
+  /* Grouping wrapper only - its children are the grid's cells. */
+  display: contents;
+  margin: 0;
+}
+.settings-fields .field.row label {
+  text-align: left;
+  margin: 0;
+  font-size: 12px; font-weight: 800; color: var(--text); white-space: nowrap;
+}
+.settings-fields .field.row select {
+  width: 100%;
+  background: var(--panel); color: var(--text);
+  border: 1px solid var(--border); border-radius: 8px;
+  padding: 5px 10px; font-size: 12px; cursor: pointer;
+}
+.settings-fields .field.row select:focus {
+  outline: 2px solid var(--accent); border-color: var(--accent);
+}
+
+.field { display: flex; flex-direction: column; gap: 3px; margin-bottom: 6px; }
+.field label { font-size: 12px; font-weight: 800; color: var(--text); margin: 0; }
+select {
+  background: var(--panel); color: var(--text);
+  border: 1px solid var(--border); border-radius: 8px;
+  padding: 4px 8px; font-size: 12px; cursor: pointer;
+}
+select:focus { outline: 2px solid var(--accent); border-color: var(--accent); }
+
+.settings-unsaved {
+  margin: 6px 0 10px; font-size: 11px; color: var(--muted); font-weight: 600;
+  text-align: center;
+}
+.settings-saved {
+  margin: 8px 0 0; font-size: 11px; font-weight: 600; color: #15803d;
+  text-align: center;
+}
+.settings-save-wrap { text-align: center; margin-top: 8px; }
+.settings-save {
+  display: inline-block; margin: 0; padding: 7px 22px; font-size: 12px;
+}
+
+@keyframes settingsSlideDown {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 
 /* ---------- Composer ---------- */
 .composer {
@@ -296,5 +450,14 @@ header {
     z-index: 20;
   }
   .composer textarea { min-height: 40px; }
+  .settings-column { width: 100% !important; max-width: none !important; }
+  .settings-panel { border-radius: 0 0 12px 12px; }
+  .settings-toggle {
+    width: 90% !important;
+    max-width: 90% !important;
+    height: 60px;
+  }
+  .settings-fields { grid-template-columns: 1fr; }
+  .settings-fields .field.row label { white-space: normal; }
   .join form { padding: 26px; gap: 14px; }
 }

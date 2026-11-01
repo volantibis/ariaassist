@@ -27,11 +27,24 @@ export type ChatMessage = {
   citations?: Citation[] | null;
 };
 
+export type Status = "connecting" | "open" | "closed";
+
+export type Settings = {
+  provider: string;
+  chat_model: string;
+  embed_model: string;
+  vision_model: string;
+  retrieval_k: number;
+  retrieval_min_score: number;
+  proactive_enabled: boolean;
+  proactive_every_n: number;
+  proactive_cooldown_s: number;
+};
+
 export type ServerEvent =
   | { type: "history"; messages: ChatMessage[] }
   | { type: "message"; message: ChatMessage }
   | { type: "message_update"; message: ChatMessage }
   | { type: "presence"; users: string[] }
-  | { type: "typing"; who: string; on: boolean };
-
-export type Status = "connecting" | "open" | "closed";
+  | { type: "typing"; who: string; on: boolean }
+  | { type: "settings"; settings: Settings };

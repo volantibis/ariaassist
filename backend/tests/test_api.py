@@ -106,6 +106,53 @@ def test_health_and_presence(make_client):
                 assert set(pres["users"]) == {"alice", "bob", "Aria"}
 
 
+def test_settings_read_and_partial_write(make_client, settings):
+    with make_client() as client:
+        got = client.get("/api/settings").json()
+        assert got["provider"] == "ollama"
+        assert got["chat_model"] == "qwen3:4b"
+        assert got["embed_model"] == "nomic-embed-text"
+        assert got["vision_model"] == "qwen3:4b"
+        assert got["retrieval_k"] == settings.retrieval_k
+        assert got["proactive_enabled"] == settings.proactive_enabled
+
+        r = client.post(
+            "/api/settings",
+            json={"retrieval_k": 8, "proactive_enabled": False},
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["retrieval_k"] == 8
+        assert body["proactive_enabled"] is False
+        # untouched fields keep their values
+        assert body["retrieval_min_score"] == settings.retrieval_min_score
+        assert body["proactive_every_n"] == settings.proactive_every_n
+        assert body["proactive_cooldown_s"] == settings.proactive_cooldown_s
+
+
+def test_settings_rejects_out_of_range(make_client):
+    with make_client() as client:
+        bad = [
+            {"retrieval_k": 0},
+            {"retrieval_k": -3},
+            {"retrieval_min_score": -0.1},
+            {"retrieval_min_score": 1.5},
+            {"proactive_every_n": 0},
+            {"proactive_cooldown_s": -5},
+        ]
+        for payload in bad:
+            r = client.post("/api/settings", json=payload)
+            assert r.status_code == 400, payload
+
+
+def test_settings_change_broadcasts_over_ws(make_client):
+    with make_client() as client, connect(client, "alice") as a:
+        drain_until(a, lambda e: e["type"] == "history")
+        client.post("/api/settings", json={"retrieval_k": 7})
+        ev = drain_until(a, lambda e: e["type"] == "settings")
+        assert ev["settings"]["retrieval_k"] == 7
+
+
 def test_names_validated(make_client):
     with make_client() as client, connect(client, "alice") as ws:
         drain_until(ws, lambda e: e["type"] == "history")
