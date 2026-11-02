@@ -10,7 +10,12 @@ configuration (AI Foundry, AI Search, Key Vault, App Service, Static Web Apps).
 
 ## Demo
 
-_Add a 2-minute demo video or GIF here._
+Tool function and multimodal rag responses:
+![Proactive and @mention chat](docs/tools_chat.gif)
+
+
+![multimodal chat](docs/rag_chat.gif)
+
 
 ## Architecture
 
@@ -84,7 +89,3 @@ python -m eval.run --provider ollama           # routing, proactive, retrieval s
 
 Single backend instance; no authentication; pending confirmations are lost on restart; plain vector
 search (no hybrid/rerank yet); scanned PDFs without a text layer are rejected. See HLD section 8.
-
-## Design decisions and results
-
-_Add after you run the eval: local 4B vs hosted model table, and what you changed to improve it._
