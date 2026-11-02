@@ -228,11 +228,23 @@ def test_upload_then_ask_with_citations(llm, make_client):
             files={"file": ("handbook.md", b"Annual leave is 24 days per year.", "text/markdown")},
             data={"uploader": "alice"},
         )
-        assert r.status_code == 200 and r.json()["name"] == "handbook.md"
-        notice = drain_until(
-            ws, lambda e: e["type"] == "message" and "uploaded" in e["message"]["text"]
-        )
-        assert "uploaded handbook.md" in notice["message"]["text"]
+        assert r.status_code == 202 and r.json()["name"] == "handbook.md"
+        # Background ingestion delivers upload_done + a system notice to the uploader.
+        done = None
+        seen_upload_msg = False
+        for _ in range(30):
+            ev = receive_json_with_timeout(ws, timeout=3.0)
+            if ev["type"] == "upload_done" and ev.get("file") == "handbook.md":
+                done = ev
+            if (
+                ev["type"] == "message"
+                and "uploaded handbook.md" in ev.get("message", {}).get("text", "")
+            ):
+                seen_upload_msg = True
+            if done and seen_upload_msg:
+                break
+        assert done is not None and done["chunks"] >= 1
+        assert seen_upload_msg
         assert [d["name"] for d in client.get("/api/documents").json()] == ["handbook.md"]
 
         ws.send_json({"text": "@Aria how many days of annual leave?"})
@@ -308,14 +320,16 @@ def test_upload_ollama_vision_missing_surfaces_hint(settings):
             store=MemoryVectorStore(),
             db=Database(":memory:"),
         )
-    ) as client:
+    ) as client, connect(client, "alice") as ws:
+        drain_until(ws, lambda e: e["type"] == "history")
         r = client.post(
             "/api/upload",
             files={"file": ("photo.png", tiny_png(), "image/png")},
             data={"uploader": "alice"},
         )
-        assert r.status_code == 502
-        detail = r.json()["detail"]
+        assert r.status_code == 202
+        err = drain_until(ws, lambda e: e["type"] == "upload_error" and e["file"] == "photo.png")
+        detail = err["reason"]
         assert "image input is not supported" in detail
         assert "mmproj" in detail
         assert "vision projectors may be missing" in detail
@@ -329,14 +343,16 @@ def test_upload_ollama_500_on_image_returns_clear_502(settings):
             store=MemoryVectorStore(),
             db=Database(":memory:"),
         )
-    ) as client:
+    ) as client, connect(client, "alice") as ws:
+        drain_until(ws, lambda e: e["type"] == "history")
         r = client.post(
             "/api/upload",
             files={"file": ("photo.png", tiny_png(), "image/png")},
             data={"uploader": "alice"},
         )
-        assert r.status_code == 502
-        detail = r.json()["detail"]
+        assert r.status_code == 202
+        err = drain_until(ws, lambda e: e["type"] == "upload_error" and e["file"] == "photo.png")
+        detail = err["reason"]
         assert "Ollama" in detail and "500" in detail
 
 
@@ -352,11 +368,13 @@ def test_upload_unreadable_image_returns_400(settings):
             store=MemoryVectorStore(),
             db=Database(":memory:"),
         )
-    ) as client:
+    ) as client, connect(client, "alice") as ws:
+        drain_until(ws, lambda e: e["type"] == "history")
         r = client.post(
             "/api/upload",
             files={"file": ("photo.png", b"not an image at all", "image/png")},
             data={"uploader": "alice"},
         )
-        assert r.status_code == 400
-        assert "could not read image" in r.json()["detail"].lower()
+        assert r.status_code == 202
+        err = drain_until(ws, lambda e: e["type"] == "upload_error" and e["file"] == "photo.png")
+        assert "could not read image" in err["reason"].lower()

@@ -88,3 +88,13 @@ class Room:
                 await ws.send_json(event)
             except Exception:  # noqa: BLE001 - a dead socket must not break the others
                 self._conns.pop(name, None)
+
+    async def send_to(self, name: str, event: dict[str, Any]) -> None:
+        """Send an event to a single connection; drop dead sockets."""
+        ws = self._conns.get(name)
+        if ws is None:
+            return
+        try:
+            await ws.send_json(event)
+        except Exception:  # noqa: BLE001 - a dead socket must not break the others
+            self._conns.pop(name, None)

@@ -246,8 +246,8 @@ function Chat({ name, onLeave }: { name: string; onLeave: (reason: string) => vo
     const drop = (e: DragEvent) => {
       e.preventDefault();
       setDragOver(false);
-      const f = e.dataTransfer?.files[0];
-      if (f) chat.upload(f);
+      const files = Array.from(e.dataTransfer?.files ?? []);
+      for (const f of files) chat.upload(f);
     };
     window.addEventListener("dragover", over);
     window.addEventListener("dragleave", leave);
@@ -295,6 +295,28 @@ function Chat({ name, onLeave }: { name: string; onLeave: (reason: string) => vo
 
       {chat.status === "closed" && <div className="health-banner">Models are down</div>}
       {chat.notice && <div className="notice">{chat.notice}</div>}
+      {chat.uploads.length > 0 && (
+        <div className="uploads">
+          {chat.uploads.map((u) => {
+            let body = "";
+            switch (u.status) {
+              case "uploading":
+                body = `Uploading ${u.name}…`;
+                break;
+              case "processing":
+                body = `Processing ${u.name}…`;
+                break;
+              case "done":
+                body = `Uploaded ${u.name}`;
+                break;
+              case "error":
+                body = `⚠ ${u.name}: ${u.reason ?? "failed"}`;
+                break;
+            }
+            return <div key={u.id} className={`upload upload--${u.status}`}>{body}</div>;
+          })}
+        </div>
+      )}
       <MessageList
         messages={chat.messages}
         typing={chat.typing}

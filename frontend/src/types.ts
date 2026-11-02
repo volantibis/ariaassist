@@ -29,6 +29,13 @@ export type ChatMessage = {
 
 export type Status = "connecting" | "open" | "closed";
 
+export type Upload = {
+  id: string;
+  name: string;
+  status: "uploading" | "processing" | "done" | "error";
+  reason?: string;
+};
+
 export type Settings = {
   provider: string;
   chat_model: string;
@@ -47,4 +54,16 @@ export type ServerEvent =
   | { type: "message_update"; message: ChatMessage }
   | { type: "presence"; users: string[] }
   | { type: "typing"; who: string; on: boolean }
-  | { type: "settings"; settings: Settings };
+  | { type: "settings"; settings: Settings }
+  | {
+      type: "upload_done";
+      file: string;
+      chunks: number;
+      client_upload_id?: string;
+    }
+  | {
+      type: "upload_error";
+      file: string;
+      reason: string;
+      client_upload_id?: string;
+    };

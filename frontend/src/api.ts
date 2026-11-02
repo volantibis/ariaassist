@@ -41,17 +41,28 @@ export async function checkHealth(): Promise<boolean> {
   }
 }
 
-/** Upload a document or image. Resolves to an error message, or null on success. */
-export async function uploadFile(file: File, uploader: string): Promise<string | null> {
+/** Upload a document or image. Returns the server-accepted file name on success,
+ *  or an error message on failure. `clientUploadId` is echoed back by the server
+ *  in `upload_done`/`upload_error` so the frontend can match events to its upload
+ *  even if ingestion finishes before the UI registers the file. */
+export async function uploadFile(
+  file: File,
+  uploader: string,
+  clientUploadId?: string,
+): Promise<{ name: string | null; error: string | null }> {
   const form = new FormData();
   form.append("file", file);
   form.append("uploader", uploader);
+  if (clientUploadId) form.append("client_upload_id", clientUploadId);
   try {
     const res = await fetch(`${API_URL}/api/upload`, { method: "POST", body: form });
-    if (res.ok) return null;
+    if (res.ok) {
+      const body = (await res.json().catch(() => ({}))) as { name?: string };
+      return { name: body.name ?? null, error: null };
+    }
     const body = await res.json().catch(() => ({}));
-    return body.detail ?? `Upload failed (${res.status})`;
+    return { name: null, error: body.detail ?? `Upload failed (${res.status})` };
   } catch {
-    return "Could not reach the server.";
+    return { name: null, error: "Could not reach the server." };
   }
 }

@@ -78,9 +78,10 @@ export default function Composer({
           type="file"
           hidden
           accept={ACCEPTED_FILES}
+          multiple
           onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) handleUpload(f);
+            const files = Array.from(e.target.files ?? []);
+            for (const f of files) handleUpload(f);
             e.target.value = "";
           }}
         />

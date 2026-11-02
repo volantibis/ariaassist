@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchSettings, updateSettings, uploadFile, WS_URL } from "./api";
-import type { ChatMessage, ServerEvent, Settings, Status } from "./types";
+import type { ChatMessage, ServerEvent, Settings, Status, Upload } from "./types";
 
 /** Backoff delays (ms) between reconnection attempts. */
 const RECONNECT_DELAYS = [1000, 2000, 4000, 8000];
@@ -13,6 +13,7 @@ export function useChat(name: string, onLeave: (reason: string) => void) {
   const [status, setStatus] = useState<Status>("connecting");
   const [settings, setSettings] = useState<Settings | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [uploads, setUploads] = useState<Upload[]>([]);
   const [notice, setNotice] = useState("");
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -63,6 +64,41 @@ export function useChat(name: string, onLeave: (reason: string) => void) {
           );
         case "settings":
           return setSettings(ev.settings);
+        case "upload_done":
+          return setUploads((prev) => {
+            const next = prev.map((u): Upload =>
+              // Match by the client-generated id so a fast ingestion that
+              // finishes before the UI registers the file still lands. Fall
+              // back to the file name for older servers that don't echo the id.
+              (u.id === ev.client_upload_id || u.name === ev.file) &&
+              u.status !== "done"
+                ? { ...u, status: "done" }
+                : u,
+            );
+            const finished = next.find(
+              (u) =>
+                (u.id === ev.client_upload_id || u.name === ev.file) && u.status === "done",
+            );
+            if (finished) {
+              // The "processing" chip must disappear as soon as processing
+              // completes / the input is back active — remove it immediately.
+              // A brief disappearing notification confirms completion.
+              setNotice(`Uploaded ${finished.name}`);
+              setTimeout(() => setNotice(() => ""), 3000);
+              return next.filter((u) => u.id !== finished.id);
+            }
+            return next;
+          });
+        case "upload_error":
+          setUploads((prev) =>
+            prev.map((u): Upload =>
+              (u.id === ev.client_upload_id || u.name === ev.file)
+                ? { ...u, status: "error", reason: ev.reason }
+                : u,
+            ),
+          );
+          setNotice(`Upload of ${ev.file} failed: ${ev.reason}`);
+          return;
       }
     };
   };
@@ -105,12 +141,50 @@ export function useChat(name: string, onLeave: (reason: string) => void) {
     async (file: File) => {
       setUploading(true);
       setNotice("");
-      const error = await uploadFile(file, name);
+      // A client-generated id lets us match upload_done / upload_error to this
+      // exact upload even if ingestion finishes before the UI registers it,
+      // or when the server's safe-name'd file name differs from the original.
+      const id = crypto.randomUUID();
+      setUploads((prev) => [
+        ...prev.filter((u) => u.status !== "done" && u.status !== "error"),
+        { id, name: file.name, status: "uploading" },
+      ]);
+      const { name: serverName, error } = await uploadFile(file, name, id);
+      const accepted = serverName ?? file.name;
       setUploading(false);
-      if (error) setNotice(error);
+      setUploads((prev) =>
+        prev.map((u): Upload =>
+          u.id === id && u.status === "uploading"
+            ? { ...u, name: accepted, status: "processing" }
+            : u,
+        ),
+      );
+      if (error) {
+        setUploads((prev) =>
+          prev.map((u): Upload =>
+            u.id === id && u.status === "processing"
+              ? { ...u, status: "error", reason: error }
+              : u,
+          ),
+        );
+        setNotice(`Upload of ${accepted} failed: ${error}`);
+      }
     },
     [name],
   );
 
-  return { messages, users, typing, status, uploading, notice, settings, send, confirm, setRemoteSettings, upload };
+  return {
+    messages,
+    users,
+    typing,
+    status,
+    uploading,
+    uploads,
+    notice,
+    settings,
+    send,
+    confirm,
+    setRemoteSettings,
+    upload,
+  };
 }

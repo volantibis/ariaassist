@@ -77,8 +77,8 @@ python -m eval.run --provider ollama           # routing, proactive, retrieval s
 | `backend/app` | FastAPI app, agent, tools, ingestion, providers |
 | `backend/tests`, `backend/eval` | Tests (fakes only) and the model eval harness |
 | `frontend/src` | React UI (`useChat.ts` owns the socket) |
-| `docs/` | HLD, LLD, generated CODEMAP, setup, deploy, agent workflow, milestones, eval |
-| `CLAUDE.md`, `AGENTS.md`, `.continue/rules` | Instructions for Claude Code, OpenCode, Continue |
+| `docs/` | setup, deploy, agent workflow, eval |
+| `CLAUDE.md`, `AGENTS.md` | Instructions for Claude Code |
 
 ## Limitations
 

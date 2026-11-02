@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 from typing import Annotated, Any
@@ -28,9 +29,11 @@ from app.chat.room import Message, Room
 from app.config import Settings, get_settings
 from app.db import Database
 from app.ingest.loaders import UnsupportedFileError
-from app.ingest.pipeline import ingest_file
+from app.ingest.pipeline import detect_kind, ingest_file, safe_name
 from app.providers.base import LLMProvider, ModelNotFoundError, VectorStore
 from app.providers.factory import make_llm, make_secrets, make_vector_store
+
+log = logging.getLogger(__name__)
 
 MAX_TEXT = 2000
 CLOSE_BAD_NAME = 4400
@@ -79,6 +82,98 @@ def _ollama_error_hint(response: httpx.Response) -> str:
     if "image input is not supported" in message.lower() or "mmproj" in message.lower():
         return f"Ollama says: {message} (vision projectors may be missing - check your Modelfile includes the mmproj)."
     return f"Ollama says: {message}"
+
+
+async def _ingest_background(
+    *,
+    llm: LLMProvider,
+    store: VectorStore,
+    db: Database,
+    room: Room,
+    service: AriaService,
+    settings: Settings,
+    filename: str,
+    data: bytes,
+    uploader: str,
+    client_upload_id: str | None = None,
+) -> None:
+    """Run the heavy ingestion pipeline in the background under `model_lock`.
+
+    The lock serializes captioning/embedding with Aria's LLM turns so an upload
+    never freezes chat. Outcomes go to the uploader only, echoed with
+    `client_upload_id` so the frontend can match them to the right chip.
+    """
+    try:
+        async with service.model_lock:  # embedding/captioning shares the model with Aria
+            doc = await ingest_file(
+                llm=llm,
+                store=store,
+                db=db,
+                settings=settings,
+                filename=filename,
+                data=data,
+                uploaded_by=uploader,
+            )
+    except UnsupportedFileError as e:
+        await room.send_to(
+            uploader,
+            {"type": "upload_error", "file": filename, "reason": str(e), "client_upload_id": client_upload_id},
+        )
+        return
+    except ModelNotFoundError as e:
+        await room.send_to(
+            uploader,
+            {
+                "type": "upload_error",
+                "file": filename,
+                "reason": f"Ollama model not configured: {e.detail or e.model}",
+                "client_upload_id": client_upload_id,
+            },
+        )
+        return
+    except httpx.HTTPStatusError as e:  # Ollama rejected the request
+        hint = _ollama_error_hint(e.response)
+        message = (
+            f"Ollama returned {e.response.status_code}. {hint}"
+            if hint
+            else f"Ollama returned {e.response.status_code}. For images, try uploading a smaller one."
+        )
+        await room.send_to(
+            uploader,
+            {"type": "upload_error", "file": filename, "reason": message, "client_upload_id": client_upload_id},
+        )
+        return
+    except ValueError as e:  # unreadable image file
+        await room.send_to(
+            uploader,
+            {"type": "upload_error", "file": filename, "reason": str(e), "client_upload_id": client_upload_id},
+        )
+        return
+    except Exception as e:  # noqa: BLE001 - never let a background task die silently
+        await room.send_to(
+            uploader,
+            {"type": "upload_error", "file": filename, "reason": f"Could not process the file: {e}", "client_upload_id": client_upload_id},
+        )
+        return
+
+    # Success: system notice visible to everyone, done event to the uploader
+    # only (never null chunks here - ingestion already succeeded).
+    await room.add(
+        Message(
+            author="system",
+            kind="system",
+            text=f"{uploader} uploaded {filename} ({doc.chunks} chunks). Ask @Aria about it.",
+        )
+    )
+    await room.send_to(
+        uploader,
+        {
+            "type": "upload_done",
+            "file": filename,
+            "chunks": doc.chunks,
+            "client_upload_id": client_upload_id,
+        },
+    )
 
 
 def create_app(
@@ -158,7 +253,6 @@ def create_app(
         await app.state.room.broadcast({"type": "settings", "settings": _public_settings()})
         return _public_settings()
 
-
     @app.get("/health")
     async def health() -> dict[str, str]:
         return {"status": "ok"}
@@ -171,52 +265,49 @@ def create_app(
     async def bookings() -> list[dict[str, Any]]:
         return [asdict(b) for b in await app.state.db.list_bookings()]
 
-    @app.post("/api/upload")
+    @app.post("/api/upload", status_code=202)
     async def upload(
-        file: Annotated[UploadFile, File()], uploader: Annotated[str, Form()] = "someone"
-    ) -> dict[str, Any]:
+        *,
+        file: Annotated[UploadFile, File()],
+        uploader: Annotated[str, Form()] = "someone",
+        client_upload_id: Annotated[str | None, Form()] = None,
+    ) -> dict[str, str]:
+        """Accept a file for background ingestion and return immediately.
+
+        The heavy parse/caption/embed pipeline runs in the background under
+        `service.model_lock` so an upload never freezes chat or Aria's
+        inference. The outcome is delivered to the uploader over the WebSocket
+        as `upload_done` / `upload_error`, echoed with `client_upload_id` so
+        the frontend can match it to the right chip. Validation that needs no
+        model (name/kind/size) still happens synchronously so bad requests get
+        a real error status right away.
+        """
+        filename = file.filename or ""
+        try:
+            safe_name(filename)  # raises UnsupportedFileError on a bad name -> 400
+            detect_kind(filename)  # raises UnsupportedFileError on unknown type -> 400
+        except UnsupportedFileError as e:
+            raise HTTPException(400, str(e)) from e
         data = await file.read(cfg.max_upload_mb * 1024 * 1024 + 1)
         if len(data) > cfg.max_upload_mb * 1024 * 1024:
             raise HTTPException(413, f"File is larger than {cfg.max_upload_mb} MB")
+
         service: AriaService = app.state.service
-        try:
-            async with service.model_lock:  # embedding/captioning shares the model with Aria
-                doc = await ingest_file(
-                    llm=app.state.llm,
-                    store=app.state.store,
-                    db=app.state.db,
-                    settings=cfg,
-                    filename=file.filename or "",
-                    data=data,
-                    uploaded_by=uploader,
-                )
-        except UnsupportedFileError as e:
-            raise HTTPException(400, str(e)) from e
-        except ModelNotFoundError as e:
-            raise HTTPException(
-                502, f"Ollama model not configured: {e.detail or e.model}"
-            ) from e
-        except httpx.HTTPStatusError as e:  # Ollama rejected the request, e.g. missing vision support -> 500
-            hint = _ollama_error_hint(e.response)
-            message = (
-                f"Could not process the file: Ollama returned {e.response.status_code}. {hint}"
-                if hint
-                else f"Could not process the file: Ollama returned {e.response.status_code}. "
-                "For images, try uploading a smaller one."
-            )
-            raise HTTPException(502, message) from e
-        except ValueError as e:  # unreadable image file
-            raise HTTPException(400, str(e)) from e
-        except Exception as e:  # noqa: BLE001
-            raise HTTPException(502, f"Could not process the file: {e}") from e
-        await app.state.room.add(
-            Message(
-                author="system",
-                kind="system",
-                text=f"{uploader} uploaded {doc.name} ({doc.chunks} chunks). Ask @Aria about it.",
+        service.spawn(
+            _ingest_background(
+                llm=app.state.llm,
+                store=app.state.store,
+                db=app.state.db,
+                room=app.state.room,
+                service=service,
+                settings=cfg,
+                filename=filename,
+                data=data,
+                uploader=uploader,
+                client_upload_id=client_upload_id,
             )
         )
-        return asdict(doc)
+        return {"status": "accepted", "name": filename}
 
     # ------------------------------------------------------------ WebSocket
     @app.websocket("/ws")
